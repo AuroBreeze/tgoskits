@@ -358,7 +358,14 @@ impl AxVM {
             };
             #[cfg(not(target_arch = "aarch64"))]
             #[allow(clippy::let_unit_value)]
-            let setup_config = <AxArchVCpuImpl as axvcpu::AxArchVCpu>::SetupConfig::default();
+            let mut setup_config = <AxArchVCpuImpl as axvcpu::AxArchVCpu>::SetupConfig::default();
+
+            // Set UEFI reset-vector entry if configured (x86_64 only)
+            #[cfg(target_arch = "x86_64")]
+            {
+                setup_config.is_uefi = inner_mut.config.is_uefi();
+            }
+            let _ = setup_config; // suppress unused warning on non-x86
 
             let entry = if vcpu.id() == 0 {
                 inner_mut.config.bsp_entry()

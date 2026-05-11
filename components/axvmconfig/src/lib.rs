@@ -320,10 +320,26 @@ pub struct VMBaseConfig {
     pub phys_cpu_sets: Option<Vec<usize>>,
 }
 
+/// Boot mode for the guest VM.
+#[cfg_attr(all(feature = "std", any(windows, unix)), derive(schemars::JsonSchema))]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum BootMode {
+    /// Traditional BIOS boot: RIP=entry_point, CS.base=0 (legacy mode).
+    #[default]
+    #[serde(alias = "bios")]
+    Bios,
+    /// UEFI firmware boot: RIP=0xFFF0, CS.base=0xFFFF0000 (x86 reset vector).
+    #[serde(alias = "uefi")]
+    Uefi,
+}
+
 /// The configuration structure for the guest VM kernel.
 #[cfg_attr(all(feature = "std", any(windows, unix)), derive(schemars::JsonSchema))]
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct VMKernelConfig {
+    /// The boot mode: "bios" (default) or "uefi".
+    #[serde(default)]
+    pub boot_mode: BootMode,
     /// The entry point of the kernel image.
     pub entry_point: usize,
     /// The file path of the kernel image.

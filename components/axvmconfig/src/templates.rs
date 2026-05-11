@@ -69,6 +69,7 @@ pub fn get_vm_config_template(params: VmTemplateParams) -> AxVMCrateConfig {
         // Kernel and boot configuration
         kernel: VMKernelConfig {
             entry_point: params.entry_point,
+            boot_mode: Default::default(),
             kernel_path: params.kernel_path,
             kernel_load_addr: params.kernel_load_addr,
             enable_bios: false,

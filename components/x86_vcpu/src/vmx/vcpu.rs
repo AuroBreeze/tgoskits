@@ -453,14 +453,14 @@ impl VmxVcpu {
         Ok(())
     }
 
-    fn setup_vmcs(&mut self, entry: GuestPhysAddr, ept_root: HostPhysAddr) -> AxResult {
+    fn setup_vmcs(&mut self, entry: GuestPhysAddr, ept_root: HostPhysAddr, is_uefi: bool) -> AxResult {
         let paddr = self.vmcs.phys_addr().as_usize() as u64;
         unsafe {
             vmx::vmclear(paddr).map_err(as_axerr)?;
         }
         self.bind_to_current_processor()?;
         self.setup_msr_bitmap()?;
-        self.setup_vmcs_guest(entry)?;
+        self.setup_vmcs_guest(entry, is_uefi)?;
         self.setup_vmcs_control(ept_root, true)?;
         self.unbind_from_current_processor()?;
         Ok(())
@@ -503,34 +503,38 @@ impl VmxVcpu {
         Ok(())
     }
 
-    fn setup_vmcs_guest(&mut self, entry: GuestPhysAddr) -> AxResult {
+    fn setup_vmcs_guest(&mut self, entry: GuestPhysAddr, is_uefi: bool) -> AxResult {
         let cr0_val: Cr0Flags =
             Cr0Flags::NOT_WRITE_THROUGH | Cr0Flags::CACHE_DISABLE | Cr0Flags::EXTENSION_TYPE;
         self.set_cr(0, cr0_val.bits());
         self.set_cr(4, 0);
 
         macro_rules! set_guest_segment {
-            ($seg:ident, $access_rights:expr) => {{
+            ($seg:ident, $selector:expr, $base:expr, $access_rights:expr) => {{
                 use VmcsGuest16::*;
                 use VmcsGuest32::*;
                 use VmcsGuestNW::*;
                 paste::paste! {
-                    [<$seg _SELECTOR>].write(0)?;
-                    [<$seg _BASE>].write(0)?;
+                    [<$seg _SELECTOR>].write($selector)?;
+                    [<$seg _BASE>].write($base)?;
                     [<$seg _LIMIT>].write(0xffff)?;
                     [<$seg _ACCESS_RIGHTS>].write($access_rights)?;
                 }
             }};
         }
 
-        set_guest_segment!(ES, 0x93); // 16-bit, present, data, read/write, accessed
-        set_guest_segment!(CS, 0x9b); // 16-bit, present, code, exec/read, accessed
-        set_guest_segment!(SS, 0x93);
-        set_guest_segment!(DS, 0x93);
-        set_guest_segment!(FS, 0x93);
-        set_guest_segment!(GS, 0x93);
-        set_guest_segment!(TR, 0x8b); // present, system, 32-bit TSS busy
-        set_guest_segment!(LDTR, 0x82); // present, system, LDT
+        set_guest_segment!(ES, 0, 0, 0x93);
+        if is_uefi {
+            set_guest_segment!(CS, 0xF000, 0xFFFF0000, 0x9b);
+        } else {
+            set_guest_segment!(CS, 0, 0, 0x9b);
+        }
+        set_guest_segment!(SS, 0, 0, 0x93);
+        set_guest_segment!(DS, 0, 0, 0x93);
+        set_guest_segment!(FS, 0, 0, 0x93);
+        set_guest_segment!(GS, 0, 0, 0x93);
+        set_guest_segment!(TR, 0, 0, 0x8b);
+        set_guest_segment!(LDTR, 0, 0, 0x82);
 
         VmcsGuestNW::GDTR_BASE.write(0)?;
         VmcsGuest32::GDTR_LIMIT.write(0xffff)?;
@@ -540,7 +544,11 @@ impl VmxVcpu {
         VmcsGuestNW::CR3.write(0)?;
         VmcsGuestNW::DR7.write(0x400)?;
         VmcsGuestNW::RSP.write(0)?;
-        VmcsGuestNW::RIP.write(entry.as_usize())?;
+        if is_uefi {
+            VmcsGuestNW::RIP.write(0xFFF0)?;
+        } else {
+            VmcsGuestNW::RIP.write(entry.as_usize())?;
+        }
         VmcsGuestNW::RFLAGS.write(0x2)?;
         VmcsGuestNW::PENDING_DBG_EXCEPTIONS.write(0)?;
         VmcsGuestNW::IA32_SYSENTER_ESP.write(0)?;
@@ -1185,10 +1193,17 @@ impl Debug for VmxVcpu {
     }
 }
 
+/// Architecture-specific setup configuration for VMX vCPU.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VmxSetupConfig {
+    /// Use x86 reset vector entry (CS.base=0xFFFF0000, RIP=0xFFF0) for UEFI boot.
+    pub is_uefi: bool,
+}
+
 impl AxArchVCpu for VmxVcpu {
     type CreateConfig = ();
 
-    type SetupConfig = ();
+    type SetupConfig = VmxSetupConfig;
 
     fn new(vm_id: VMId, vcpu_id: VCpuId, _config: Self::CreateConfig) -> AxResult<Self> {
         Self::new(vm_id, vcpu_id)
@@ -1204,8 +1219,8 @@ impl AxArchVCpu for VmxVcpu {
         Ok(())
     }
 
-    fn setup(&mut self, _config: Self::SetupConfig) -> AxResult {
-        self.setup_vmcs(self.entry.unwrap(), self.ept_root.unwrap())
+    fn setup(&mut self, config: Self::SetupConfig) -> AxResult {
+        self.setup_vmcs(self.entry.unwrap(), self.ept_root.unwrap(), config.is_uefi)
     }
 
     fn run(&mut self) -> AxResult<AxVCpuExitReason> {

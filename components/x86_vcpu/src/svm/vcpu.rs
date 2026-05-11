@@ -170,14 +170,14 @@ impl SvmVcpu {
         Ok(vcpu)
     }
 
-    fn setup_vmcb(&mut self, entry: GuestPhysAddr, npt_root: HostPhysAddr) -> AxResult {
+    fn setup_vmcb(&mut self, entry: GuestPhysAddr, npt_root: HostPhysAddr, is_uefi: bool) -> AxResult {
         self.setup_io_bitmap()?;
         self.setup_msr_bitmap()?;
-        self.setup_vmcb_guest(entry)?;
+        self.setup_vmcb_guest(entry, is_uefi)?;
         self.setup_vmcb_control(npt_root)
     }
 
-    fn setup_vmcb_guest(&mut self, entry: GuestPhysAddr) -> AxResult {
+    fn setup_vmcb_guest(&mut self, entry: GuestPhysAddr, is_uefi: bool) -> AxResult {
         let cr0_val =
             Cr0Flags::NOT_WRITE_THROUGH | Cr0Flags::CACHE_DISABLE | Cr0Flags::EXTENSION_TYPE;
         let vmcb = unsafe { self.vmcb.as_vmcb() };
@@ -187,10 +187,17 @@ impl SvmVcpu {
         state.cr3.set(0);
         state.cr4.set(0);
 
-        state.cs.selector.set(0);
-        state.cs.base.set(0);
-        state.cs.limit.set(0xffff);
-        state.cs.attr.set(0x9b);
+        if is_uefi {
+            state.cs.selector.set(0xF000);
+            state.cs.base.set(0xFFFF0000);
+            state.cs.limit.set(0xffff);
+            state.cs.attr.set(0x9b);
+        } else {
+            state.cs.selector.set(0);
+            state.cs.base.set(0);
+            state.cs.limit.set(0xffff);
+            state.cs.attr.set(0x9b);
+        }
 
         set_vmcb_segment(&mut state.ds, 0, 0x93);
         set_vmcb_segment(&mut state.es, 0, 0x93);
@@ -208,7 +215,11 @@ impl SvmVcpu {
         state.dr7.set(0x400);
         state.dr6.set(0xffff0ff0);
         state.rflags.set(0x2);
-        state.rip.set(entry.as_usize() as u64);
+        if is_uefi {
+            state.rip.set(0xFFF0);
+        } else {
+            state.rip.set(entry.as_usize() as u64);
+        }
         state.rsp.set(0);
         state.efer.set(EFER_SVME);
         state.g_pat.set(Msr::IA32_PAT.read());
@@ -739,9 +750,16 @@ impl Debug for SvmVcpu {
     }
 }
 
+/// Architecture-specific setup configuration for SVM vCPU.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SvmSetupConfig {
+    /// Use x86 reset vector entry (CS.base=0xFFFF0000, RIP=0xFFF0) for UEFI boot.
+    pub is_uefi: bool,
+}
+
 impl AxArchVCpu for SvmVcpu {
     type CreateConfig = ();
-    type SetupConfig = ();
+    type SetupConfig = SvmSetupConfig;
 
     fn new(vm_id: VMId, vcpu_id: VCpuId, _config: Self::CreateConfig) -> AxResult<Self> {
         Self::create(vm_id, vcpu_id)
@@ -757,14 +775,14 @@ impl AxArchVCpu for SvmVcpu {
         Ok(())
     }
 
-    fn setup(&mut self, _config: Self::SetupConfig) -> AxResult {
+    fn setup(&mut self, config: Self::SetupConfig) -> AxResult {
         let entry = self
             .entry
             .ok_or_else(|| ax_err_type!(InvalidInput, "SVM guest entry is not set"))?;
         let npt_root = self
             .npt_root
             .ok_or_else(|| ax_err_type!(InvalidInput, "SVM NPT root is not set"))?;
-        self.setup_vmcb(entry, npt_root)
+        self.setup_vmcb(entry, npt_root, config.is_uefi)
     }
 
     fn run(&mut self) -> AxResult<AxVCpuExitReason> {

@@ -47,6 +47,8 @@ pub struct AxVCpuConfig {
     pub bsp_entry: GuestPhysAddr,
     /// The entry address in GPA for the Application Processor (AP).
     pub ap_entry: GuestPhysAddr,
+    /// Whether to use x86 reset vector entry (CS.base=0xFFFF0000, RIP=0xFFF0).
+    pub is_uefi: bool,
 }
 
 /// Ramdisk image information.
@@ -107,6 +109,7 @@ impl From<AxVMCrateConfig> for AxVMConfig {
             cpu_config: AxVCpuConfig {
                 bsp_entry: GuestPhysAddr::from(cfg.kernel.entry_point),
                 ap_entry: GuestPhysAddr::from(cfg.kernel.entry_point),
+                is_uefi: matches!(cfg.kernel.boot_mode, axvmconfig::BootMode::Uefi),
             },
             image_config: VMImageConfig {
                 kernel_load_gpa: GuestPhysAddr::from(cfg.kernel.kernel_load_addr),
@@ -186,6 +189,11 @@ impl AxVMConfig {
     pub fn ap_entry(&self) -> GuestPhysAddr {
         // Retrieves AP entry from the CPU configuration.
         self.cpu_config.ap_entry
+    }
+
+    /// Returns whether the guest should use UEFI reset-vector boot mode.
+    pub fn is_uefi(&self) -> bool {
+        self.cpu_config.is_uefi
     }
 
     /// Returns a mutable reference to the physical CPU list.
