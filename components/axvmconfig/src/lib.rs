@@ -353,6 +353,14 @@ pub struct VMKernelConfig {
     pub bios_path: Option<String>,
     /// The load address of the BIOS image, `None` if not used.
     pub bios_load_addr: Option<usize>,
+    /// The file path of the OVMF firmware code image (UEFI), `None` if not used.
+    pub ovmf_code_path: Option<String>,
+    /// The load address in GPA for OVMF firmware code, `None` if not used.
+    pub ovmf_code_gpa: Option<usize>,
+    /// The file path of the OVMF variable store image (UEFI), `None` if not used.
+    pub ovmf_vars_path: Option<String>,
+    /// The load address in GPA for OVMF variable store, `None` if not used.
+    pub ovmf_vars_gpa: Option<usize>,
     /// The file path of the device tree blob (DTB), `None` if not used.
     pub dtb_path: Option<String>,
     /// The load address of the device tree blob (DTB), `None` if not used.

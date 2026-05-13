@@ -7,14 +7,25 @@ phys_cpu_sets = [1]
 
 [kernel]
 boot_mode = "uefi"
-entry_point = 0xFFFFFFF0
 image_location = "memory"
+# entry_point ignored for UEFI — CPU uses reset vector 0xFFFFFFF0
+entry_point = 0xFFF0
+# kernel not used for UEFI boot; path must exist for build.rs image resolution
 kernel_path = "/usr/share/edk2/x64/OVMF_CODE.4m.fd"
-kernel_load_addr = 0xFFC8_4000
+kernel_load_addr = 0x100000
+
+# OVMF UEFI firmware
+# CODE=3653632(0x37C000) VARS=540672(0x84000) total=4MB
+# CODE at: 4GB - 0x37C000 = 0xFFC84000
+# VARS at: 0xFFC84000 - 0x84000 = 0xFFC00000
+ovmf_code_path = "/usr/share/edk2/x64/OVMF_CODE.4m.fd"
+ovmf_code_gpa = 0xFFC84000
+ovmf_vars_path = "/usr/share/edk2/x64/OVMF_VARS.4m.fd"
+ovmf_vars_gpa = 0xFFC00000
 
 memory_regions = [
-  [0x0000_0000, 0x0100_0000, 0x7, 0],
-  [0xFFC0_0000, 0x40_0000, 0x7, 0],
+  [0x0000_0000, 0x400_0000, 0x7, 0], # DRAM 64MB
+  [0xFFC0_0000, 0x40_0000, 0x7, 0],  # OVMF flash 4MB
 ]
 
 [devices]

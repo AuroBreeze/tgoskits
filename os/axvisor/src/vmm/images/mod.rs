@@ -61,6 +61,8 @@ pub struct ImageLoader {
     kernel_load_gpa: GuestPhysAddr,
     bios_load_gpa: Option<GuestPhysAddr>,
     dtb_load_gpa: Option<GuestPhysAddr>,
+    ovmf_code_gpa: Option<GuestPhysAddr>,
+    ovmf_vars_gpa: Option<GuestPhysAddr>,
 }
 
 impl ImageLoader {
@@ -72,6 +74,8 @@ impl ImageLoader {
             kernel_load_gpa: GuestPhysAddr::default(),
             bios_load_gpa: None,
             dtb_load_gpa: None,
+            ovmf_code_gpa: None,
+            ovmf_vars_gpa: None,
         }
     }
 
@@ -88,6 +92,8 @@ impl ImageLoader {
             self.kernel_load_gpa = config.image_config.kernel_load_gpa;
             self.dtb_load_gpa = config.image_config.dtb_load_gpa;
             self.bios_load_gpa = config.image_config.bios_load_gpa;
+            self.ovmf_code_gpa = config.image_config.ovmf_code_gpa;
+            self.ovmf_vars_gpa = config.image_config.ovmf_vars_gpa;
         });
 
         match self.config.kernel.image_location.as_deref() {
@@ -149,6 +155,28 @@ impl ImageLoader {
         }
 
         self.load_boot_image_from_memory(vm_imags.bios)?;
+
+        // Load OVMF firmware code (UEFI)
+        if let Some(buffer) = vm_imags.ovmf_code {
+            load_vm_image_from_memory(
+                buffer,
+                self.ovmf_code_gpa
+                    .expect("OVMF code load addr is missed"),
+                self.vm.clone(),
+            )
+            .expect("Failed to load OVMF code");
+        }
+
+        // Load OVMF variable store (UEFI)
+        if let Some(buffer) = vm_imags.ovmf_vars {
+            load_vm_image_from_memory(
+                buffer,
+                self.ovmf_vars_gpa
+                    .expect("OVMF vars load addr is missed"),
+                self.vm.clone(),
+            )
+            .expect("Failed to load OVMF vars");
+        }
 
         Ok(())
     }
@@ -400,6 +428,24 @@ pub mod fs {
         // Load Ramdisk image if needed.
         if let Some(ramdisk_path) = &loader.config.kernel.ramdisk_path {
             loader.load_ramdisk_from_filesystem(ramdisk_path)?;
+        };
+        // Load OVMF firmware code (UEFI) if needed.
+        if let Some(ovmf_code_path) = &loader.config.kernel.ovmf_code_path {
+            if let Some(ovmf_code_gpa) = loader.ovmf_code_gpa {
+                info!("Loading OVMF_CODE from {} to GPA {:#x}", ovmf_code_path, ovmf_code_gpa);
+                load_vm_image(ovmf_code_path, ovmf_code_gpa, loader.vm.clone())?;
+            } else {
+                return ax_err!(NotFound, "OVMF code load addr is missed");
+            }
+        };
+        // Load OVMF variable store (UEFI) if needed.
+        if let Some(ovmf_vars_path) = &loader.config.kernel.ovmf_vars_path {
+            if let Some(ovmf_vars_gpa) = loader.ovmf_vars_gpa {
+                info!("Loading OVMF_VARS from {} to GPA {:#x}", ovmf_vars_path, ovmf_vars_gpa);
+                load_vm_image(ovmf_vars_path, ovmf_vars_gpa, loader.vm.clone())?;
+            } else {
+                return ax_err!(NotFound, "OVMF vars load addr is missed");
+            }
         };
         // Load DTB image if needed.
         let vm_config = axvm::config::AxVMConfig::from(loader.config.clone());

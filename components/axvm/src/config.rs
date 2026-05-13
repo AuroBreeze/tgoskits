@@ -71,6 +71,10 @@ pub struct VMImageConfig {
     pub dtb_load_gpa: Option<GuestPhysAddr>,
     /// Ramdisk image info, `None` if not used.
     pub ramdisk: Option<RamdiskInfo>,
+    /// The load address in GPA for OVMF firmware code (UEFI), `None` if not used.
+    pub ovmf_code_gpa: Option<GuestPhysAddr>,
+    /// The load address in GPA for OVMF variable store (UEFI), `None` if not used.
+    pub ovmf_vars_gpa: Option<GuestPhysAddr>,
 }
 
 /// A part of `AxVMCrateConfig`, which represents a `VM`.
@@ -119,6 +123,8 @@ impl From<AxVMCrateConfig> for AxVMConfig {
                     load_gpa: GuestPhysAddr::from(addr),
                     size: None,
                 }),
+                ovmf_code_gpa: cfg.kernel.ovmf_code_gpa.map(GuestPhysAddr::from),
+                ovmf_vars_gpa: cfg.kernel.ovmf_vars_gpa.map(GuestPhysAddr::from),
             },
             // memory_regions: cfg.kernel.memory_regions,
             emu_devices: cfg.devices.emu_devices,

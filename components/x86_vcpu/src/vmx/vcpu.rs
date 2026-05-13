@@ -145,7 +145,7 @@ impl VmxVcpu {
 
     /// Set the new [`VmxVcpu`] context from guest OS.
     pub fn setup(&mut self, ept_root: HostPhysAddr, entry: GuestPhysAddr) -> AxResult {
-        self.setup_vmcs(entry, ept_root)?;
+        self.setup_vmcs(entry, ept_root, false)?;
         Ok(())
     }
 

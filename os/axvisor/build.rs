@@ -117,6 +117,8 @@ struct MemoryImage {
     pub dtb: Option<PathBuf>,
     pub bios: Option<PathBuf>,
     pub ramdisk: Option<PathBuf>,
+    pub ovmf_code: Option<PathBuf>,
+    pub ovmf_vars: Option<PathBuf>,
 }
 
 fn parse_config_file(config_file: &ConfigFile) -> Option<MemoryImage> {
@@ -171,12 +173,28 @@ fn parse_config_file(config_file: &ConfigFile) -> Option<MemoryImage> {
         .and_then(|v| v.as_str())
         .map(|v| convert_to_absolute(&config_file.path, v));
 
+    let ovmf_code = config
+        .get("kernel")?
+        .as_table()?
+        .get("ovmf_code_path")
+        .and_then(|v| v.as_str())
+        .map(|v| convert_to_absolute(&config_file.path, v));
+
+    let ovmf_vars = config
+        .get("kernel")?
+        .as_table()?
+        .get("ovmf_vars_path")
+        .and_then(|v| v.as_str())
+        .map(|v| convert_to_absolute(&config_file.path, v));
+
     Some(MemoryImage {
         id,
         kernel,
         dtb,
         bios,
         ramdisk,
+        ovmf_code,
+        ovmf_vars,
     })
 }
 
@@ -221,6 +239,22 @@ fn generate_guest_img_loading_functions(
                 None => quote! { None },
             };
 
+            let ovmf_code = match files.ovmf_code {
+                Some(v) => {
+                    let s = v.canonicalize().unwrap().display().to_string();
+                    quote! { Some(include_bytes!(#s)) }
+                }
+                None => quote! { None },
+            };
+
+            let ovmf_vars = match files.ovmf_vars {
+                Some(v) => {
+                    let s = v.canonicalize().unwrap().display().to_string();
+                    quote! { Some(include_bytes!(#s)) }
+                }
+                None => quote! { None },
+            };
+
             memory_images.push(quote! {
                 MemoryImage {
                     id: #id,
@@ -228,6 +262,8 @@ fn generate_guest_img_loading_functions(
                     dtb: #dtb,
                     bios: #bios,
                     ramdisk: #ramdisk,
+                    ovmf_code: #ovmf_code,
+                    ovmf_vars: #ovmf_vars,
                 }
             });
         }
@@ -246,6 +282,10 @@ fn generate_guest_img_loading_functions(
             pub bios: Option<&'static [u8]>,
             /// ramdisk image
             pub ramdisk: Option<&'static [u8]>,
+            /// OVMF firmware code image (UEFI)
+            pub ovmf_code: Option<&'static [u8]>,
+            /// OVMF variable store image (UEFI)
+            pub ovmf_vars: Option<&'static [u8]>,
         }
 
         /// Get memory images from config file.
